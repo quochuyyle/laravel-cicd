@@ -1,27 +1,76 @@
 name: Laravel
 
+run-name: ${{ github.actor }} testing laravel app
+
 on:
   push:
-    branches: [ "main" ]
+    branches: ['main']
   pull_request:
-    branches: [ "main" ]
+    types: ['closed']
+    branches: ['main']
 
 jobs:
   laravel-tests:
-
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
     steps:
-    - uses: shivammathur/setup-php@15c43e89cdef867065b0213be354c2841860869e
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Check PHP version
+      uses: shivammathur/setup-php@v2
       with:
         php-version: '8.x'
-    - uses: actions/checkout@v4
-    - name: Copy .env
+        cache: 'npm'
+    - name: Setup Node version
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    - name: Copy .envd
       run: php -r "file_exists('.env') || copy('.env.example', '.env');"
-    - name: Install Dependencies
+    - name: Install Composer dependencies
       run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
-    - name: Generate key
-      run: php artisan key:generate
+    - name: Install node dependencies
+      run: npm ci
+    - name: Setup project
+      run: |
+        php artisan key:generate
+        php artisan optimize:clear
     - name: Directory Permissions
-      run: chmod -R 777 storage bootstrap/cache
+      run: chmod -R 755 storage
+    - name: Run test
+      run: php artisan test
 
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    needs: ['laravel-tests']
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    - name: Setup PHP version
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.x'
+        extensions: imagick
+    - name: Setup Node version
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    - name: Install Composer dependencies
+      run: composer install --no-dev --optimize-autoloader
+    - name: Install node dependencies
+      run: npm ci
+    - name: Setup project
+      run: |
+        php artisan key:generate
+        php artisan optimize:clear
+    - name: Directory Permissons
+      run: chmod -R 755 storage
+    - name: Run test
+      run: php artisan test
